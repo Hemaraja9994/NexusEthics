@@ -5,7 +5,7 @@ export default async function handler(req, res) {
     const { prompt } = req.body;
     const GROQ_API_KEY = process.env.GROQ_API_KEY?.trim();
 
-    if (!GROQ_API_KEY) return res.status(500).json({ error: 'API Key missing.' });
+    if (!GROQ_API_KEY) return res.status(500).json({ error: 'API Key missing in Vercel settings.' });
 
     try {
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -15,25 +15,27 @@ export default async function handler(req, res) {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                model: "llama-3.1-70b-versatile", // Powerful model for deep auditing
+                model: "llama-3.1-8b-instant", // Fastest model to beat Vercel 10s limit
                 messages: [
                     {
                         role: "system",
-                        content: "You are a Senior Indian Ethics Auditor. Audit every item. Output ONLY valid JSON."
+                        content: "You are a Senior Indian Ethics Auditor. Evaluate EVERY item in the checklist. Do not summarize. Output valid JSON only."
                     },
                     { role: "user", content: prompt }
                 ],
                 temperature: 0.1,
-                max_tokens: 8000, 
+                max_tokens: 5000, 
                 response_format: { type: "json_object" }
             })
         });
 
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error?.message || 'Groq Error');
+        if (!response.ok) throw new Error(data.error?.message || 'Groq API Error');
 
+        // Return the content string directly
         return res.status(200).json(data.choices[0].message.content);
     } catch (error) {
+        console.error("Backend Error:", error.message);
         return res.status(500).json({ error: error.message });
     }
 }
