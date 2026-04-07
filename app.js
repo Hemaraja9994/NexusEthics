@@ -4,21 +4,26 @@ const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/r
 const SCOPES = "https://www.googleapis.com/auth/drive.file";
 
 let tokenClient, aggregatedText = "", auditData = null;
-let protocolMetadata = { title: "Detecting...", pi: "Detecting...", dept: "Detecting..." };
+let protocolMetadata = { title: "Not Found", pi: "Not Found", dept: "Not Found" };
 let currentPersona = "consensus";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
-// --- 2. GAPI ---
+// --- 2. GAPI LOADERS ---
 function gapiLoaded() { gapi.load('client', async () => { await gapi.client.init({ discoveryDocs: DISCOVERY_DOCS }); }); }
 function gisLoaded() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: '', }); }
 window.onload = () => { gapiLoaded(); gisLoaded(); };
+function handleAuthClick() {
+    tokenClient.callback = async (resp) => { if (resp.error) return; document.getElementById('driveBtn').innerText = "Drive Active"; saveToDrive(); };
+    tokenClient.requestAccessToken({prompt: 'consent'});
+}
 
-// --- 3. UI ---
+// --- 3. UI HANDLERS ---
 function setPersona(p) {
     currentPersona = p;
     document.querySelectorAll('.role-link').forEach(b => b.classList.remove('role-active'));
-    document.getElementById(`p-${p}`).classList.add('role-active');
+    const el = document.getElementById(`p-${p}`);
+    if (el) el.classList.add('role-active');
     if (auditData) renderResult();
 }
 
@@ -39,7 +44,7 @@ fileInput.onchange = async (e) => {
             if (file.type === "application/pdf") text = await parsePDF(file);
             else if (file.type.includes("word") || file.name.endsWith('.docx')) text = await parseWord(file);
             else if (file.type.startsWith("image/")) text = await parseImage(file);
-            aggregatedText += `\n[DOC: ${file.name}]\n${text}\n`;
+            aggregatedText += `\n[FILE: ${file.name}]\n${text}\n`;
             div.innerText = `✅ Loaded: ${file.name}`;
             div.className = "text-[9px] font-bold text-emerald-600";
         } catch (err) { div.innerText = `❌ Error: ${file.name}`; }
@@ -60,79 +65,78 @@ async function parsePDF(f) {
 async function parseWord(f) { const buf = await f.arrayBuffer(); const res = await mammoth.extractRawText({ arrayBuffer: buf }); return res.value; }
 async function parseImage(f) { const res = await Tesseract.recognize(f, 'eng'); return res.data.text; }
 
-// --- 5. PARALLEL INSTANT AUDIT ENGINE ---
+// --- 5. ULTRA-FAST AUDIT ENGINE ---
 async function executeAnalysis() {
     if(!aggregatedText) return alert("Upload protocols first.");
     const btn = document.getElementById('runBtn');
-    btn.disabled = true;
-    btn.innerText = "STARTING INSTANT PARALLEL AUDIT...";
+    btn.disabled = true; 
+    btn.innerText = "80-POINT AUDIT IN PROGRESS...";
 
-    const context = aggregatedText.substring(0, 15000);
-
-    // We define 3 distinct tasks to run in parallel
-    const task1 = `Audit Part A (Scientific) and Part B (Ethical). Extract Metadata (Title, PI, Dept). Output JSON: {"metadata": {"title":"..","pi":"..","dept":".."}, "checks": [{"item":"..","status":"..","note":"..","part":"A/B"}]}`;
-    const task2 = `Audit Part C (Social) and Part D (Legal Aspects). Output JSON: {"checks": [{"item":"..","status":"..","note":"..","part":"C/D"}]}`;
-    const task3 = `Audit Part E & F (Full PIS/ICF Checklist - 40 items). Provide summary. Output JSON: {"summary":"..", "checks": [{"item":"..","status":"..","note":"..","part":"E/F"}]}`;
+    const prompt = `Perform a rapid item-by-item Ethics Audit. 
+    1. Extract: {"title": "..", "pi": "..", "dept": ".."}.
+    2. Check Parts A-F (80 items). Use status: "Yes" or "NF". Keep notes very short.
+    3. Output JSON format: 
+    {
+      "metadata": {"title":"..", "pi":"..", "dept":".."},
+      "summary": "Short critique",
+      "score": 80,
+      "checks": [{"item":"..", "status":"..", "note":"..", "part":"A"}]
+    }
+    TEXT: ${aggregatedText.substring(0, 15000)}`;
 
     try {
-        btn.innerText = "ANALYZING ALL SECTIONS SIMULTANEOUSLY...";
+        const res = await fetch(`/api/analyze`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ prompt })
+        });
 
-        // FIRE ALL 3 REQUESTS AT ONCE
-        const [r1, r2, r3] = await Promise.all([
-            fetch('/api/analyze', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ prompt: task1 + " TEXT: " + context }) }),
-            fetch('/api/analyze', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ prompt: task2 + " TEXT: " + context }) }),
-            fetch('/api/analyze', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ prompt: task3 + " TEXT: " + context }) })
-        ]);
-
-        const [d1, d2, d3] = await Promise.all([r1.json().then(JSON.parse), r2.json().then(JSON.parse), r3.json().then(JSON.parse)]);
-
-        // COMBINE RESULTS
-        const combinedChecks = [...(d1.checks || []), ...(d2.checks || []), ...(d3.checks || [])];
-        protocolMetadata = d1.metadata || protocolMetadata;
-
-        const finalResult = {
-            analysis: d3.summary || "Audit Complete.",
-            score: Math.round((combinedChecks.filter(c => c.status.toLowerCase().includes('yes') || c.status.toLowerCase().includes('pass')).length / combinedChecks.length) * 100) || 0,
-            checks: combinedChecks
+        const rawData = await res.json();
+        const parsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+        
+        // Single Audit mapped to all personas for speed
+        auditData = {
+            metadata: parsed.metadata || protocolMetadata,
+            consensus: parsed, chairperson: parsed, secretary: parsed, lawyer: parsed, clinician: parsed, layperson: parsed
         };
 
-        auditData = { consensus: finalResult, chairperson: finalResult, secretary: finalResult, lawyer: finalResult, clinician: finalResult, layperson: finalResult };
-        
+        protocolMetadata = auditData.metadata;
         document.getElementById('welcome').classList.add('hidden');
         document.getElementById('resultsUI').classList.remove('hidden');
         renderResult();
-    } catch (e) {
-        alert("Instant Audit failed. Please try again.");
-    } finally {
-        btn.disabled = false;
-        btn.innerText = "Run War Room Audit";
+    } catch (e) { 
+        alert("Server limit reached. Please try a smaller portion of the document."); 
+    } finally { 
+        btn.disabled = false; btn.innerText = "Run War Room Audit"; 
     }
 }
 
 function renderResult() {
-    const data = auditData[currentPersona];
+    const data = auditData[currentPersona] || auditData.consensus;
     document.getElementById('viewLabel').innerText = currentPersona;
     document.getElementById('roleTitle').innerText = currentPersona.toUpperCase() + " PERSPECTIVE";
-    document.getElementById('roleAnalysis').innerText = data.analysis;
-    document.getElementById('totalScore').innerText = data.score + "%";
+    document.getElementById('roleAnalysis').innerText = data.summary || "Audit complete.";
+    document.getElementById('totalScore').innerText = (data.score || 0) + "%";
 
     let html = "";
-    data.checks.forEach(c => {
-        const s = (c.status || "").toLowerCase();
-        const type = s.includes('yes') || s.includes('pass') ? 'success' : s.includes('not') ? 'modify' : 'scrutinize';
-        html += `<div class="${type} shadow-sm border border-navy/5 p-4 rounded-xl mb-3">
-            <p class="text-[7px] font-black uppercase opacity-40">Part ${c.part}</p>
-            <p class="text-[10px] font-black uppercase text-navy">${c.item}</p>
-            <p class="text-xs font-bold leading-tight mt-1 text-slate-600">${c.note}</p>
-        </div>`;
-    });
+    if (data.checks) {
+        data.checks.forEach(c => {
+            const s = (c.status || "").toLowerCase();
+            const type = s.includes('yes') || s.includes('pass') ? 'success' : 'scrutinize';
+            html += `<div class="${type} shadow-sm border border-navy/5 p-3 rounded-lg mb-2">
+                <p class="text-[7px] font-bold uppercase opacity-40">Part ${c.part}</p>
+                <p class="text-[9px] font-bold text-navy">${c.item}</p>
+                <p class="text-[10px] mt-1 text-slate-600">${c.note}</p>
+            </div>`;
+        });
+    }
     document.getElementById('checklistItems').innerHTML = html;
     
     const ctx = document.getElementById('scoreChart').getContext('2d');
     if(window.myChart) window.myChart.destroy();
     window.myChart = new Chart(ctx, {
         type: 'doughnut',
-        data: { datasets: [{ data: [data.score, 100-data.score], backgroundColor: ['#F97316', '#F1F5F9'], borderWidth: 0, cutout: '82%' }] }
+        data: { datasets: [{ data: [data.score || 0, 100-(data.score||0)], backgroundColor: ['#F97316', '#F1F5F9'], borderWidth: 0, cutout: '82%' }] }
     });
 }
 
@@ -141,12 +145,24 @@ function exportPDF() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const data = auditData[currentPersona];
-    doc.text("Nexus Ethics Audit", 14, 15);
+    doc.text("Nexus Ethics Audit Report", 14, 15);
     doc.autoTable({
         startY: 25,
-        head: [['Part', 'Criteria', 'Status', 'Observation']],
-        body: data.checks.map(c => [c.part, c.item, c.status, c.note]),
+        head: [['Criteria', 'Status', 'Observation']],
+        body: data.checks.map(c => [c.item, c.status, c.note]),
         styles: { fontSize: 7 }
     });
-    doc.save(`Audit_Report_${Date.now()}.pdf`);
+    doc.save(`Nexus_Report_${Date.now()}.pdf`);
+}
+
+async function saveToDrive() {
+    const token = gapi.client.getToken();
+    if (!token) return handleAuthClick();
+    const content = { metadata: protocolMetadata, audit: auditData };
+    const file = new Blob([JSON.stringify(content, null, 2)], { type: 'application/json' });
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify({ name: `Nexus_Report_${Date.now()}.json`, mimeType: 'application/json' })], { type: 'application/json' }));
+    form.append('file', file);
+    await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', { method: 'POST', headers: new Headers({ 'Authorization': 'Bearer ' + token.access_token }), body: form });
+    alert("Audit Saved to Google Drive.");
 }
