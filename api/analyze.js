@@ -3,11 +3,9 @@ export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
     const { prompt } = req.body;
-    const GROQ_API_KEY = process.env.GROQ_API_KEY ? process.env.GROQ_API_KEY.trim() : null;
+    const GROQ_API_KEY = process.env.GROQ_API_KEY?.trim();
 
-    if (!GROQ_API_KEY) {
-        return res.status(500).json({ error: 'API Key missing in Vercel settings.' });
-    }
+    if (!GROQ_API_KEY) return res.status(500).json({ error: 'API Key missing.' });
 
     try {
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -21,24 +19,21 @@ export default async function handler(req, res) {
                 messages: [
                     {
                         role: "system",
-                        content: "You are an expert Indian Ethics Committee Auditor. You must output ONLY a valid JSON object. No markdown, no extra text."
+                        content: "You are an expert Indian Ethics Committee Auditor. You must strictly audit every point provided in the checklist. Do not group or summarize. Output MUST be valid JSON."
                     },
                     { role: "user", content: prompt }
                 ],
                 temperature: 0.1,
+                max_tokens: 4000, // Increased to allow long checklists
                 response_format: { type: "json_object" }
             })
         });
 
         const data = await response.json();
+        if (!response.ok) throw new Error(data.error?.message || 'Groq Error');
 
-        if (!response.ok) {
-            return res.status(response.status).json({ error: data.error?.message || 'AI Provider Error' });
-        }
-
-        // Return the content string (which is a JSON string)
         return res.status(200).json(data.choices[0].message.content);
     } catch (error) {
-        return res.status(500).json({ error: `Server Error: ${error.message}` });
+        return res.status(500).json({ error: error.message });
     }
 }
