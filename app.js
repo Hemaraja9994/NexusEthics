@@ -6,16 +6,21 @@ const SCOPES = "https://www.googleapis.com/auth/drive.file";
 let tokenClient;
 let aggregatedText = "";
 let auditData = null;
-let protocolMetadata = { number: "N/A", title: "Not Detected", pi: "Not Detected", dept: "Not Detected" };
+let protocolMetadata = { number: "Not Detected", title: "Not Detected", pi: "Not Detected", dept: "Not Detected" };
 let currentPersona = "consensus";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
-// --- 2. GAPI & GIS INITIALIZATION ---
+// --- 2. GOOGLE DRIVE ENGINE ---
 function gapiLoaded() { gapi.load('client', async () => { await gapi.client.init({ discoveryDocs: DISCOVERY_DOCS }); }); }
 function gisLoaded() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: '', }); }
 window.onload = () => { gapiLoaded(); gisLoaded(); };
+function handleAuthClick() {
+    tokenClient.callback = async (resp) => { if (resp.error) return; document.getElementById('driveBtn').innerText = "Drive Active"; saveToDrive(); };
+    tokenClient.requestAccessToken({prompt: 'consent'});
+}
 
+// --- 3. UI HANDLERS ---
 function setPersona(p) {
     currentPersona = p;
     document.querySelectorAll('.role-link').forEach(b => b.classList.remove('role-active'));
@@ -23,7 +28,7 @@ function setPersona(p) {
     if (auditData) renderResult();
 }
 
-// --- 3. MULTI-FORMAT PARSER ---
+// --- 4. MULTI-FORMAT PARSER ---
 const fileInput = document.getElementById('fileInput');
 document.getElementById('dropZone').onclick = () => fileInput.click();
 
@@ -41,7 +46,7 @@ fileInput.onchange = async (e) => {
             if (file.type === "application/pdf") text = await parsePDF(file);
             else if (file.type.includes("word") || file.name.endsWith('.docx')) text = await parseWord(file);
             else if (file.type.startsWith("image/")) text = await parseImage(file);
-            aggregatedText += `\n[DOCUMENT: ${file.name}]\n${text}\n`;
+            aggregatedText += `\n[FILE: ${file.name}]\n${text}\n`;
             div.innerText = `✅ Loaded: ${file.name}`;
             div.className = "text-[9px] font-bold text-emerald-600";
         } catch (err) { div.innerText = `❌ Error: ${file.name}`; }
@@ -62,41 +67,31 @@ async function parsePDF(f) {
 async function parseWord(f) { const buf = await f.arrayBuffer(); const res = await mammoth.extractRawText({ arrayBuffer: buf }); return res.value; }
 async function parseImage(f) { const res = await Tesseract.recognize(f, 'eng'); return res.data.text; }
 
-// --- 4. THE COMPREHENSIVE AUDIT ENGINE ---
+// --- 5. COMPREHENSIVE AI AUDIT LOGIC ---
 async function executeAnalysis() {
-    if(!aggregatedText) return alert("Please upload a protocol first.");
+    if(!aggregatedText) return alert("Upload protocols first.");
     const btn = document.getElementById('runBtn');
-    btn.disabled = true; btn.innerText = "BOARD DELIBERATING (FULL AUDIT)...";
+    btn.disabled = true; btn.innerText = "FULL SYSTEM AUDIT IN PROGRESS...";
 
-    const prompt = `Act as an Indian Ethics Committee Auditor. You MUST perform a 100% item-by-item audit. DO NOT SUMMARIZE.
-    For every item listed below, you must return a status (Yes / No / Not Found) and a specific observation.
+    const prompt = `Act as an Indian Ethics Committee Auditor. Perform a MANDATORY 80-item point-by-point audit. DO NOT SUMMARIZE. 
+    1. EXTRACT: Protocol Number, Title, PI Name, Dept. 
+    2. AUDIT EVERY ITEM:
+    PART A (Scientific): Background, Aims, Design, Sample Size, Stats, Inclusion/Exclusion, Discontinuation, Tools, Team Expertise, Infrastructure, Injury Management.
+    PART B (Ethical): Sampling Fairness, Vulnerable (Justification, Safeguards, Autonomy), Voluntary Nature, Standard of Care, Placebo, Inducements, Privacy, COI, SAE Compensation.
+    PART C/D (Legal): Social Value, Community, Clinical Trial Agreement, MTA, Insurance, Regulatory, Budget.
+    PART E/F (PIS/ICF Checklist - 40+ items): Simple language (8th std), PI/Title match, Research vs Therapy, Recruitment reason, Duration, Risks/Benefits, Storage/Disposal, SAE handling, Contact details for PI & Member-Secretary YEC-4, Signature provisions.
 
-    1. EXTRACT METADATA: Protocol Number, Study Title, PI Name, Department.
-    
-    2. AUDIT CHECKLIST:
-    PART A (Scientific): 1.Background/Need, 2.Aims/Objectives, 3.Study Design, 4.Sample Size Justification, 5.Statistical Tests, 6.Inclusion Criteria, 7.Exclusion Criteria, 8.Discontinuation Criteria, 9.Validated Tools, 10.Team Expertise, 11.Infrastructure, 12.Injury Management, 13.Intervention Methodology, 14.Data Collection Methodology, 15.Form Appropriateness, 16.Informed Consent Process.
-
-    PART B (Ethical): 1.Fair Sampling, 2.Vulnerable Populations (check for justification, safeguards, autonomy, and items a-k), 3.Withdrawal Criteria, 4.Voluntary Participation, 5.Standard of Care (Intervention), 6.Standard of Care (Control), 7.Placebo Justification, 8.Inducements/Compensation, 9.Privacy, 10.Confidentiality, 11.Sample Storage/Disposal, 12.Conflict of Interest, 13.AE/SAE Compensation.
-
-    RISK ANALYSIS: Magnitude of harm (Negligible/Small/Significant/Serious) and Type of Harm (Physical, Psychological, Social, etc.).
-
-    PART C/D (Legal): 1.Social Value, 2.Community Involvement, 3.Cultural/Religious issues, 4.Clinical Trial Agreement, 5.Compensation Plan, 6.MTA, 7.Insurance, 8.Regulatory Approvals, 9.Budget.
-
-    PART E (PIS Checklist - 23 items): check language level, PI name, Research vs Therapy, Recruitment reason, Duration, Voluntary nature, Benefits, Storage/Sharing, SAE Handling, Contact details for PI and Member-Secretary YEC-4.
-
-    PART F (ICF Checklist - 20 items): Language, Time to understand, Opportunity to ask, AV Consent provision, Signatures, Thumb impressions, Translation.
-
-    Output ONLY pure JSON.
+    Output ONLY valid JSON:
     {
-        "metadata": {"number": "...", "title": "...", "pi": "...", "dept": "..."},
-        "consensus": {
-            "analysis": "Executive summary of audit", 
-            "score": 0, 
-            "checks": [{"item": "Exact Criteria Name", "status": "Yes/No/Not Found", "note": "Observation text", "part": "A/B/C/D/E/F"}]
-        },
-        "chairperson": {...}, "secretary": {...}, "lawyer": {...}, "clinician": {...}, "layperson": {...}
+      "metadata": {"number": "...", "title": "...", "pi": "...", "dept": "..."},
+      "consensus": {"analysis": "...", "score": 85, "checks": [{"item": "...", "status": "Yes/No/Not Found", "note": "...", "part": "A"}]},
+      "chairperson": {"analysis": "...", "score": 85, "checks": []},
+      "secretary": {"analysis": "...", "score": 85, "checks": []},
+      "lawyer": {"analysis": "...", "score": 85, "checks": []},
+      "clinician": {"analysis": "...", "score": 85, "checks": []},
+      "layperson": {"analysis": "...", "score": 85, "checks": []}
     }
-
+    
     TEXT: ${aggregatedText.substring(0, 18000)}`;
 
     try {
@@ -106,9 +101,14 @@ async function executeAnalysis() {
             body: JSON.stringify({ prompt })
         });
 
-        const data = await res.json();
-        const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+        const rawData = await res.json();
+        const parsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
         
+        // --- DEFENSIVE FALLBACK ---
+        if (parsed.consensus && !parsed.chairperson) {
+            parsed.chairperson = parsed.secretary = parsed.lawyer = parsed.clinician = parsed.layperson = parsed.consensus;
+        }
+
         auditData = parsed;
         protocolMetadata = parsed.metadata || protocolMetadata;
         
@@ -116,123 +116,128 @@ async function executeAnalysis() {
         document.getElementById('resultsUI').classList.remove('hidden');
         renderResult();
     } catch (e) { 
-        alert("AI Error: " + e.message); 
+        alert("AI Processing Error: " + e.message); 
     } finally { 
         btn.disabled = false; btn.innerText = "Run War Room Audit"; 
     }
 }
 
 function renderResult() {
-    const data = auditData[currentPersona];
+    if (!auditData) return;
+    const data = auditData[currentPersona] || auditData.consensus;
+    
     document.getElementById('viewLabel').innerText = currentPersona;
     document.getElementById('roleTitle').innerText = currentPersona.toUpperCase() + " PERSPECTIVE";
-    document.getElementById('roleAnalysis').innerText = data.analysis;
-    document.getElementById('totalScore').innerText = data.score + "%";
+    document.getElementById('roleAnalysis').innerText = data.analysis || "Audit summary not available.";
+    document.getElementById('totalScore').innerText = (data.score || 0) + "%";
 
     let html = "";
-    data.checks.forEach(c => {
-        const status = c.status.toLowerCase();
-        const type = (status === 'yes' || status === 'pass') ? 'success' : (status === 'not found' || status === 'not mentioned') ? 'modify' : 'scrutinize';
-        html += `<div class="${type} shadow-sm border border-navy/5">
-            <p class="text-[7px] font-black uppercase opacity-40">Part ${c.part}</p>
-            <p class="text-[9px] font-black uppercase text-navy">${c.item}</p>
-            <p class="text-xs font-medium leading-tight mt-1 text-slate-600">${c.note}</p>
-            <p class="text-[8px] mt-1 font-bold">Status: ${c.status}</p>
-        </div>`;
-    });
+    if (data.checks) {
+        data.checks.forEach(c => {
+            const status = (c.status || "").toLowerCase();
+            const type = (status.includes('yes') || status.includes('pass')) ? 'success' : (status.includes('not')) ? 'modify' : 'scrutinize';
+            html += `<div class="${type} shadow-sm border border-navy/5">
+                <p class="text-[7px] font-black uppercase opacity-40">Part ${c.part || 'Audit'}</p>
+                <p class="text-[9px] font-black uppercase text-navy">${c.item}</p>
+                <p class="text-xs font-bold leading-tight mt-1 text-slate-600">${c.note}</p>
+            </div>`;
+        });
+    }
     document.getElementById('checklistItems').innerHTML = html;
-    updateChart(data.score);
+    updateChart(data.score || 0);
 }
 
+let chart;
 function updateChart(score) {
     const canvas = document.getElementById('scoreChart');
     const ctx = canvas.getContext('2d');
-    if(window.chartInstance) window.chartInstance.destroy();
-    window.chartInstance = new Chart(ctx, {
+    if(chart) chart.destroy();
+    chart = new Chart(ctx, {
         type: 'doughnut',
         data: { datasets: [{ data: [score, 100-score], backgroundColor: ['#F97316', '#F1F5F9'], borderWidth: 0, cutout: '82%' }] }
     });
 }
 
-// --- 5. COMPREHENSIVE PDF EXPORT ---
+// --- 6. EXPORT ENGINE (MULTI-PAGE) ---
 function exportPDF() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    const data = auditData[currentPersona];
+    const data = auditData[currentPersona] || auditData.consensus;
 
     const drawHeader = () => {
         doc.setFillColor(15, 23, 42);
         doc.rect(0, 0, 210, 40, 'F');
         doc.setTextColor(255);
-        doc.setFontSize(22);
-        doc.setFont("helvetica", "bold");
+        doc.setFontSize(22); doc.setFont("helvetica", "bold");
         doc.text("NEXUS ETHICS AI", 105, 18, { align: "center" });
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "normal");
-        doc.text("Professional Reviewer Assessment Form (Comprehensive Audit)", 105, 26, { align: "center" });
-        doc.setFontSize(7);
-        doc.text("Conceptualized by Mr. Hemaraja Nayaka.S", 105, 33, { align: "center" });
+        doc.setFontSize(10); doc.setFont("helvetica", "normal");
+        doc.text("Professional Reviewer Assessment Form (Full Audit)", 105, 26, { align: "center" });
+        doc.setFontSize(8); doc.text("Conceptualized by Mr. Hemaraja Nayaka.S", 105, 33, { align: "center" });
     };
 
     drawHeader();
     let finalY = 50;
 
-    // Metadata Table
-    doc.setTextColor(0);
-    doc.setFontSize(10);
+    doc.setTextColor(0); doc.setFontSize(11); doc.setFont("helvetica", "bold");
     doc.text("SECTION 1: PROTOCOL IDENTIFICATION", 14, finalY);
+    
     doc.autoTable({
         startY: finalY + 4,
         body: [
-            ["Protocol Number", protocolMetadata.number],
-            ["Study Title", protocolMetadata.title],
-            ["Principal Investigator", protocolMetadata.pi],
-            ["Department", protocolMetadata.dept],
-            ["Reviewer Persona", currentPersona.toUpperCase()]
+            ["Title", protocolMetadata.title],
+            ["PI", protocolMetadata.pi],
+            ["Dept", protocolMetadata.dept],
+            ["Compliance", data.score + "%"]
         ],
         theme: 'grid',
         styles: { fontSize: 8, cellPadding: 2 },
-        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 } }
+        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 35 } }
     });
 
-    finalY = doc.lastAutoTable.finalY + 10;
+    finalY = doc.lastAutoTable.finalY + 12;
 
     const renderAuditPart = (partCode, partTitle) => {
-        const rows = data.checks.filter(c => c.part === partCode);
-        if (rows.length === 0) return;
-
+        const filtered = data.checks.filter(c => c.part === partCode);
+        if (filtered.length === 0) return;
         if (finalY > 240) { doc.addPage(); drawHeader(); finalY = 50; }
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "bold");
+        
+        doc.setFontSize(11); doc.setFont("helvetica", "bold");
         doc.text(partTitle, 14, finalY);
-
         doc.autoTable({
             startY: finalY + 4,
-            head: [['S.No', 'Criteria', 'Yes/No/NF', 'Observation']],
-            body: rows.map((c, i) => [i + 1, c.item, c.status, c.note]),
+            head: [['S.No', 'Assessment Criteria', 'Status', 'Observations']],
+            body: filtered.map((c, i) => [i + 1, c.item, c.status, c.note]),
             theme: 'striped',
             headStyles: { fillColor: [249, 115, 22] },
             styles: { fontSize: 7, cellPadding: 2 },
             columnStyles: { 0: { cellWidth: 8 }, 2: { cellWidth: 20 } }
         });
-        finalY = doc.lastAutoTable.finalY + 10;
+        finalY = doc.lastAutoTable.finalY + 12;
     };
 
     renderAuditPart("A", "PART A: SCIENTIFIC ISSUES");
-    renderAuditPart("B", "PART B: ETHICAL ISSUES");
-    renderAuditPart("C", "PART C: SOCIAL / CULTURAL ISSUES");
+    renderAuditPart("B", "PART B: ETHICAL ISSUES & VULNERABILITY");
+    renderAuditPart("C", "PART C: SOCIAL & CULTURAL ISSUES");
     renderAuditPart("D", "PART D: LEGAL ASPECTS");
     renderAuditPart("E", "PART E: PIS CHECKLIST");
-    renderAuditPart("F", "PART F: INFORMED CONSENT FORM (ICF) CHECKLIST");
+    renderAuditPart("F", "PART F: INFORMED CONSENT CHECKLIST");
 
-    // Footer and Numbers
-    const pages = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= pages; i++) {
-        doc.setPage(i);
-        doc.setFontSize(7);
-        doc.setTextColor(150);
-        doc.text(`Page ${i} of ${pages} | Nexus Ethics AI System Audit`, 105, 290, { align: "center" });
-    }
+    if (finalY > 240) { doc.addPage(); drawHeader(); finalY = 50; }
+    doc.setFontSize(11); doc.text("FINAL CRITIQUE:", 14, finalY);
+    doc.setFontSize(8.5); doc.setFont("helvetica", "normal");
+    const splitText = doc.splitTextToSize(data.analysis, 180);
+    doc.text(splitText, 14, finalY + 8);
 
     doc.save(`Nexus_Ethics_Report_${Date.now()}.pdf`);
+}
+
+async function saveToDrive() {
+    const token = gapi.client.getToken();
+    if (!token) return handleAuthClick();
+    const file = new Blob([JSON.stringify(auditData, null, 2)], { type: 'application/json' });
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify({ name: `Nexus_Report_${Date.now()}.json`, mimeType: 'application/json' })], { type: 'application/json' }));
+    form.append('file', file);
+    await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', { method: 'POST', headers: new Headers({ 'Authorization': 'Bearer ' + token.access_token }), body: form });
+    alert("Audit Saved to Google Drive.");
 }
