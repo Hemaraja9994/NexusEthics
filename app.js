@@ -266,4 +266,29 @@ function exportPDF() {
 }
 
 function exportWord() {}
-async function saveToDrive() {}
+async function saveToDrive() {
+    const token = gapi.client.getToken();
+    if (!token) return handleAuthClick();
+    
+    const content = { metadata: protocolMetadata, audit: auditData };
+    const file = new Blob([JSON.stringify(content, null, 2)], { type: 'application/json' });
+    
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify({ 
+        name: `NexusEthics_${protocolMetadata.title.substring(0,20)}_${Date.now()}.json`, 
+        mimeType: 'application/json' 
+    })], { type: 'application/json' }));
+    form.append('file', file);
+
+    try {
+        await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', { 
+            method: 'POST', 
+            headers: new Headers({ 'Authorization': 'Bearer ' + token.access_token }), 
+            body: form 
+        });
+        // Updated Alert Message
+        alert("🔒 SECURE SAVE COMPLETE\n\nThis report has been saved to your personal Google Drive. Nexus Ethics AI has no copy of this data.");
+    } catch (e) {
+        alert("Error saving to Drive. Please check your connection.");
+    }
+}
