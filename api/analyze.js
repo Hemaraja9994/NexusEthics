@@ -7,11 +7,15 @@ export default async function handler(req, res) {
     const { prompt } = req.body;
     const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
+    // DIAGNOSTIC 1: Check if Key exists
     if (!GROQ_API_KEY) {
+        console.error("!!! CRITICAL ERROR: GROQ_API_KEY is missing from Vercel Environment Variables !!!");
         return res.status(500).json({ error: 'Server configuration error: API Key missing.' });
     }
 
     try {
+        console.log("Attempting to contact Groq API...");
+        
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
             headers: {
@@ -36,45 +40,33 @@ export default async function handler(req, res) {
 
         const data = await response.json();
 
-        // --- LAYER 1: Check if the API call itself was successful ---
+        // DIAGNOSTIC 2: Check if Groq returned an error (like 401 or 429)
         if (!response.ok) {
-            console.error("Groq API Error Response:", data);
+            console.error("!!! GROQ API REJECTED THE REQUEST !!!");
+            console.error("Status:", response.status);
+            console.error("Groq Error Details:", JSON.stringify(data, null, 2));
             return res.status(response.status).json({ error: `Groq API Error: ${data.error?.message || 'Unknown error'}` });
         }
 
-        // --- LAYER 2: Check if 'choices' exists and is not empty ---
+        // DIAGNOSTIC 3: Check if the response format is correct
         if (!data.choices || data.choices.length === 0) {
-            console.error("Groq Response Missing 'choices':", data);
-            return res.status(500).json({ error: "AI returned an empty response. Please try again." });
+            console.error("!!! GROQ RETURNED EMPTY CHOICES !!!", JSON.stringify(data, null, 2));
+            return res.status(500).json({ error: "AI returned an empty response." });
         }
 
-        // --- LAYER 3: Safe extraction of the content ---
         let content = data.choices[0].message?.content;
-
         if (!content) {
-            console.error("Groq Response Missing 'content':", data);
-            return res.status(500).json({ error: "AI response was empty." });
+            console.error("!!! GROQ RESPONSE HAD NO CONTENT !!!", JSON.stringify(data, null, 2));
+            return res.status(500).json({ error: "AI response content was empty." });
         }
 
-        // --- LAYER 4: The JSON Cleaner (Removes markdown/extra text) ---
+        // CLEANER: Remove any markdown formatting
         try {
             const firstBracket = content.indexOf('{');
             const lastBracket = content.lastIndexOf('}');
-            
             if (firstBracket !== -1 && lastBracket !== -1) {
                 content = content.substring(firstBracket, lastBracket + 1);
             }
-            
             const cleanJson = JSON.parse(content);
-            return res.status(200).json(cleanJson);
-
-        } catch (parseError) {
-            console.error("JSON Parse Error. Raw content was:", content);
-            return res.status(500).json({ error: "AI returned invalid JSON format." });
-        }
-
-    } catch (error) {
-        console.error("Critical Backend Error:", error.message);
-        return res.status(500).json({ error: `Internal Error: ${error.message}` });
-    }
-}
+            console.log("✅ SUCCESS: AI returned valid JSON.");
+            return res.status(200).json(clea
