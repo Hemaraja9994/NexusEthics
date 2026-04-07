@@ -13,9 +13,12 @@ export default async function handler(req, res) {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                model: "llama-3.1-8b-instant", // The fastest "Instant" model
+                model: "llama-3.1-8b-instant",
                 messages: [
-                    { role: "system", content: "You are a Senior Ethics Auditor. Audit every specific item. Output ONLY valid JSON." },
+                    { 
+                        role: "system", 
+                        content: "You are an Indian Ethics Auditor. Audit every item using extremely short, telegraphic notes (max 10 words per note). Output ONLY valid JSON." 
+                    },
                     { role: "user", content: prompt }
                 ],
                 temperature: 0.1,
@@ -24,6 +27,8 @@ export default async function handler(req, res) {
         });
 
         const data = await response.json();
+        if (!response.ok) throw new Error(data.error?.message || 'AI Error');
+
         return res.status(200).json(data.choices[0].message.content);
     } catch (error) {
         return res.status(500).json({ error: error.message });
