@@ -1,3 +1,4 @@
+// api/analyze.js
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
@@ -34,11 +35,46 @@ export default async function handler(req, res) {
         });
 
         const data = await response.json();
-        const content = data.choices[0].message.content;
-        const cleanJson = JSON.parse(content);
-        res.status(200).json(cleanJson);
+
+        // --- LAYER 1: Check if the API call itself was successful ---
+        if (!response.ok) {
+            console.error("Groq API Error Response:", data);
+            return res.status(response.status).json({ error: `Groq API Error: ${data.error?.message || 'Unknown error'}` });
+        }
+
+        // --- LAYER 2: Check if 'choices' exists and is not empty ---
+        if (!data.choices || data.choices.length === 0) {
+            console.error("Groq Response Missing 'choices':", data);
+            return res.status(500).json({ error: "AI returned an empty response. Please try again." });
+        }
+
+        // --- LAYER 3: Safe extraction of the content ---
+        let content = data.choices[0].message?.content;
+
+        if (!content) {
+            console.error("Groq Response Missing 'content':", data);
+            return res.status(500).json({ error: "AI response was empty." });
+        }
+
+        // --- LAYER 4: The JSON Cleaner (Removes markdown/extra text) ---
+        try {
+            const firstBracket = content.indexOf('{');
+            const lastBracket = content.lastIndexOf('}');
+            
+            if (firstBracket !== -1 && lastBracket !== -1) {
+                content = content.substring(firstBracket, lastBracket + 1);
+            }
+            
+            const cleanJson = JSON.parse(content);
+            return res.status(200).json(cleanJson);
+
+        } catch (parseError) {
+            console.error("JSON Parse Error. Raw content was:", content);
+            return res.status(500).json({ error: "AI returned invalid JSON format." });
+        }
+
     } catch (error) {
-        console.error("Error:", error);
-        res.status(500).json({ error: "Audit failed. Please try again." });
+        console.error("Critical Backend Error:", error.message);
+        return res.status(500).json({ error: `Internal Error: ${error.message}` });
     }
 }
