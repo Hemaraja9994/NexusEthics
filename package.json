@@ -1,0 +1,10 @@
+{
+  "name": "nexus-ethics-ai",
+  "version": "1.0.0",
+  "description": "Nexus Ethics AI - National Virtual EC Command Center",
+  "main": "index.html",
+  "dependencies": {},
+  "scripts": {
+    "start": "serve ."
+  }
+}
