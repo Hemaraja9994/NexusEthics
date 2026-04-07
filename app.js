@@ -82,30 +82,41 @@ async function executeAnalysis() {
     Category: ${currentCategory}. 
     Text: ${aggregatedText.substring(0, 15000)}
     
-    Output ONLY pure JSON. 
-    JSON Format: {"consensus": {"analysis": "...", "score": 85, "checks": [{"item": "Consent", "status": "success", "note": "Clear language used"}]}, "chairperson": {...}, "secretary": {...}, "lawyer": {...}, "clinician": {...}, "layperson": {...}}`;
+    Output ONLY pure JSON formatted as a single object containing keys for: consensus, chairperson, secretary, lawyer, clinician, layperson. Each must have 'analysis', 'score' (number), and 'checks' (array of {item, status, note}).`;
 
     try {
-        // This calls your api/analyze.js file
         const res = await fetch(`/api/analyze`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ prompt })
         });
+
+        if (!res.ok) {
+            const errData = await res.json();
+            throw new Error(errData.error || "Server error");
+        }
+
         const data = await res.json();
-        if (data.error) throw new Error(data.error);
         
-        auditData = data;
+        // Handle double-stringified JSON if it occurs
+        auditData = typeof data === 'string' ? JSON.parse(data) : data;
+        
         document.getElementById('welcome').classList.add('hidden');
         document.getElementById('resultsUI').classList.remove('hidden');
         renderResult();
-    } catch (e) { alert("AI Error: " + e.message); }
-    finally { btn.disabled = false; btn.innerText = "Run War Room Audit"; }
+    } catch (e) { 
+        alert("AI Error: " + e.message); 
+        console.error(e);
+    } finally { 
+        btn.disabled = false; btn.innerText = "Run War Room Audit"; 
+    }
 }
 
 function renderResult() {
+    if (!auditData) return;
     const data = auditData[currentPersona];
     if(!data) return;
+    
     document.getElementById('viewLabel').innerText = currentPersona;
     document.getElementById('roleTitle').innerText = currentPersona.toUpperCase() + " PERSPECTIVE";
     document.getElementById('roleAnalysis').innerText = data.analysis;
@@ -126,7 +137,9 @@ function renderResult() {
 
 let chart;
 function updateChart(score) {
-    const ctx = document.getElementById('scoreChart').getContext('2d');
+    const canvas = document.getElementById('scoreChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
     if(chart) chart.destroy();
     chart = new Chart(ctx, {
         type: 'doughnut',
@@ -142,7 +155,7 @@ function exportPDF() {
     doc.setTextColor(255); doc.setFontSize(20); doc.text("Nexus Ethics Formal Review", 15, 25);
     doc.setFontSize(8); doc.text("Conceptualized and Academic Designed by Mr. Hemaraja Nayaka.S", 15, 35);
     doc.autoTable({ startY: 60, head: [['Criteria', 'Status', 'Observation']], body: auditData.consensus.checks.map(c => [c.item, c.status.toUpperCase(), c.note]), theme: 'grid' });
-    doc.save("Ethics_Audit.pdf");
+    doc.save("Nexus_Ethics_Audit.pdf");
 }
 
 function exportWord() {
@@ -150,7 +163,7 @@ function exportWord() {
     const doc = new Document({
         sections: [{ children: [
             new Paragraph({ children: [new TextRun({ text: "Nexus Ethics AI Audit Report", bold: true, size: 32 })] }),
-            new Paragraph({ text: "Conceptualized and Academic Designed by Mr. Hemaraja Nayaka.S" }),
+            new Paragraph({ text: "Conceptualualized and Academic Designed by Mr. Hemaraja Nayaka.S" }),
             new Paragraph({ text: auditData.consensus.analysis }),
             new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [
                 new TableRow({ children: [ new TableCell({ children: [new Paragraph("Criteria")] }), new TableCell({ children: [new Paragraph("Status")] }), new TableCell({ children: [new Paragraph("Observations")] }) ]}),
@@ -158,7 +171,7 @@ function exportWord() {
             ]})
         ]}]
     });
-    Packer.toBlob(doc).then(blob => saveAs(blob, "Ethics_Audit.docx"));
+    Packer.toBlob(doc).then(blob => saveAs(blob, "Nexus_Ethics_Audit.docx"));
 }
 
 async function saveToDrive() {
